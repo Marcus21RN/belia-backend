@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ORM(BaseModel):
@@ -38,6 +38,7 @@ class ClienteBase(BaseModel):
     nombre_completo: str = Field(max_length=150)
     telefono: str = Field(max_length=15)
     correo: str | None = Field(None, max_length=100)
+    notas: str | None = None
 
 
 class ClienteCreate(ClienteBase):
@@ -48,6 +49,7 @@ class ClienteUpdate(BaseModel):
     nombre_completo: str | None = Field(None, max_length=150)
     telefono: str | None = Field(None, max_length=15)
     correo: str | None = Field(None, max_length=100)
+    notas: str | None = None
 
 
 class ClienteOut(ORM, ClienteBase):
@@ -61,10 +63,35 @@ class EmpleadoBase(BaseModel):
     correo: str = Field(max_length=100)
     especialidad: str | None = Field(None, max_length=100)
     rol: str = Field(max_length=50)
+    activo: bool = True
+
+
+class HorarioEmpleadoIn(BaseModel):
+    dia: int = Field(ge=0, le=6, description="0=Domingo, 6=Sábado")
+    hora_entrada: time
+    hora_salida: time
+
+    @model_validator(mode="after")
+    def _validar_horas(self):
+        if self.hora_entrada >= self.hora_salida:
+            raise ValueError("hora_entrada debe ser menor que hora_salida")
+        return self
+
+
+def validar_password_bcrypt(password: str) -> str:
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("La contraseña no puede superar 72 bytes en UTF-8.")
+    return password
 
 
 class EmpleadoCreate(EmpleadoBase):
     password: str = Field(min_length=8, max_length=128)
+    horarios: list[HorarioEmpleadoIn] = Field(default_factory=list)
+
+    @field_validator("password")
+    @classmethod
+    def validar_password(cls, password: str) -> str:
+        return validar_password_bcrypt(password)
 
 
 class EmpleadoUpdate(BaseModel):
@@ -73,7 +100,14 @@ class EmpleadoUpdate(BaseModel):
     correo: str | None = Field(None, max_length=100)
     especialidad: str | None = Field(None, max_length=100)
     rol: str | None = Field(None, max_length=50)
+    activo: bool | None = None
     password: str | None = Field(None, min_length=8, max_length=128)
+    horarios: list[HorarioEmpleadoIn] | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validar_password(cls, password: str | None) -> str | None:
+        return validar_password_bcrypt(password) if password is not None else None
 
 
 class EmpleadoOut(ORM, EmpleadoBase):
@@ -165,6 +199,7 @@ class InventarioBase(BaseModel):
     precio: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     cantidad_existente: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     imagen_url: str | None = None
+    activo: bool = True
     categoria_id: int
     presentacion_id: int | None = None
     unidad_id: int | None = None
@@ -179,6 +214,7 @@ class InventarioUpdate(BaseModel):
     precio: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     cantidad_existente: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     imagen_url: str | None = None
+    activo: bool | None = None
     categoria_id: int | None = None
     presentacion_id: int | None = None
     unidad_id: int | None = None
@@ -189,6 +225,24 @@ class InventarioOut(ORM, InventarioBase):
 
 
 # Citas
+class CitaDetalleIn(BaseModel):
+    servicio_id: int
+    empleado_id: int
+    fecha_hora_inicio: datetime
+    fecha_hora_fin: datetime
+
+    @model_validator(mode="after")
+    def _validar_fechas(self):
+        if self.fecha_hora_inicio >= self.fecha_hora_fin:
+            raise ValueError("fecha_hora_inicio debe ser menor que fecha_hora_fin")
+        return self
+
+
+class CitaDetalleOut(ORM, CitaDetalleIn):
+    id_detalle: int
+    cita_id: int
+
+
 class CitaBase(BaseModel):
     empleado_id: int
     servicio_id: int
@@ -196,6 +250,8 @@ class CitaBase(BaseModel):
     fecha_hora_inicio: datetime
     fecha_hora_fin: datetime
     estado_id: int
+    notas_detalles: str | None = None
+    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
 
     @model_validator(mode="after")
     def _validar_fechas(self):
@@ -205,7 +261,7 @@ class CitaBase(BaseModel):
 
 
 class CitaCreate(CitaBase):
-    pass
+    detalles: list[CitaDetalleIn] = Field(default_factory=list)
 
 
 class CitaUpdate(BaseModel):
@@ -215,10 +271,14 @@ class CitaUpdate(BaseModel):
     fecha_hora_inicio: datetime | None = None
     fecha_hora_fin: datetime | None = None
     estado_id: int | None = None
+    notas_detalles: str | None = None
+    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
+    detalles: list[CitaDetalleIn] | None = None
 
 
 class CitaOut(ORM, CitaBase):
     id_cita: int
+    detalles: list[CitaDetalleOut] = Field(default_factory=list)
 
 
 # Paquetes

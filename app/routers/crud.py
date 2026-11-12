@@ -16,6 +16,16 @@ def commit_or_409(db: Session):
         ) from exc
 
 
+def flush_or_409(db: Session):
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Conflicto de integridad: {exc.orig}"
+        ) from exc
+
+
 def get_or_404(db: Session, model, pk):
     obj = db.get(model, pk)
     if obj is None:
