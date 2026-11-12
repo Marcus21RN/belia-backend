@@ -28,6 +28,7 @@ class Cliente(Base):
     nombre_completo: Mapped[str] = mapped_column(String(150))
     telefono: Mapped[str] = mapped_column(String(15), unique=True)
     correo: Mapped[str | None] = mapped_column(String(100), unique=True)
+    notas: Mapped[str | None] = mapped_column(Text)
 
 
 class Empleado(Base):
@@ -40,6 +41,7 @@ class Empleado(Base):
     password: Mapped[str] = mapped_column(String(255))
     especialidad: Mapped[str | None] = mapped_column(String(100))
     rol: Mapped[str] = mapped_column(String(50))
+    activo: Mapped[bool] = mapped_column(default=True)
 
 
 class Horario(Base):
@@ -100,6 +102,7 @@ class Inventario(Base):
     precio: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     cantidad_existente: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     imagen_url: Mapped[str | None] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(default=True)
     categoria_id: Mapped[int] = mapped_column(ForeignKey("categorias.id_categoria"))
     presentacion_id: Mapped[int | None] = mapped_column(
         ForeignKey("presentacion.id_presentacion")
@@ -122,6 +125,30 @@ class Cita(Base):
     fecha_hora_inicio: Mapped[datetime]
     fecha_hora_fin: Mapped[datetime]
     estado_id: Mapped[int] = mapped_column(ForeignKey("estado.id_estado"))
+    notas_detalles: Mapped[str | None] = mapped_column(Text)
+    precio_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    detalles: Mapped[list["CitaDetalle"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class CitaDetalle(Base):
+    __tablename__ = "cita_detalles"
+    __table_args__ = (
+        CheckConstraint(
+            "fecha_hora_inicio < fecha_hora_fin",
+            name="check_cita_detalle_fechas",
+        ),
+    )
+
+    id_detalle: Mapped[int] = mapped_column(primary_key=True)
+    cita_id: Mapped[int] = mapped_column(
+        ForeignKey("citas.id_cita", ondelete="CASCADE")
+    )
+    servicio_id: Mapped[int] = mapped_column(ForeignKey("servicios.id_servicio"))
+    empleado_id: Mapped[int] = mapped_column(ForeignKey("empleado.id_empleado"))
+    fecha_hora_inicio: Mapped[datetime]
+    fecha_hora_fin: Mapped[datetime]
 
 
 class Paquete(Base):

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models, schemas
-from .routers import citas, empleados, paquetes
+from .routers import citas, empleados, paquetes, views
 from .routers.crud import crud_router
 
 app = FastAPI(title="Belia API", version="1.0.0")
@@ -35,6 +35,7 @@ app.include_router(_crud(models.Estado, "/estados", "Estados", "Estado"))
 app.include_router(empleados.router)
 app.include_router(citas.router)
 app.include_router(paquetes.router)
+app.include_router(views.router)
 
 
 @app.get("/", tags=["Health"])

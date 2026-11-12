@@ -20,10 +20,44 @@ def _validar_cita(db: Session, empleado_id, inicio, fin, excluir_id=None):
     )
     if excluir_id is not None:
         q = q.filter(models.Cita.id_cita != excluir_id)
-    if q.first():
+    detalle_q = (
+        db.query(models.CitaDetalle)
+        .join(models.Cita, models.Cita.id_cita == models.CitaDetalle.cita_id)
+        .filter(
+            models.CitaDetalle.empleado_id == empleado_id,
+            models.CitaDetalle.fecha_hora_inicio < fin,
+            models.CitaDetalle.fecha_hora_fin > inicio,
+        )
+    )
+    if excluir_id is not None:
+        detalle_q = detalle_q.filter(models.Cita.id_cita != excluir_id)
+    if q.first() or detalle_q.first():
         raise HTTPException(
             status.HTTP_409_CONFLICT, "El empleado ya tiene una cita en ese horario"
         )
+
+
+def _validar_detalles(db, detalles, excluir_id=None):
+    vistos = []
+    for detalle in detalles:
+        _validar_cita(
+            db,
+            detalle.empleado_id,
+            detalle.fecha_hora_inicio,
+            detalle.fecha_hora_fin,
+            excluir_id,
+        )
+        for anterior in vistos:
+            if (
+                anterior.empleado_id == detalle.empleado_id
+                and anterior.fecha_hora_inicio < detalle.fecha_hora_fin
+                and anterior.fecha_hora_fin > detalle.fecha_hora_inicio
+            ):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "Un especialista no puede tener dos tramos simultáneos en la cita",
+                )
+        vistos.append(detalle)
 
 
 @router.get("/", response_model=list[schemas.CitaOut])
@@ -57,8 +91,25 @@ def obtener(id_cita: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=schemas.CitaOut, status_code=201)
 def crear(data: schemas.CitaCreate, db: Session = Depends(get_db)):
-    _validar_cita(db, data.empleado_id, data.fecha_hora_inicio, data.fecha_hora_fin)
-    obj = models.Cita(**data.model_dump())
+    values = data.model_dump(exclude={"detalles"})
+    if data.detalles:
+        _validar_detalles(db, data.detalles)
+        first_detail = data.detalles[0]
+        values.update(
+            empleado_id=first_detail.empleado_id,
+            servicio_id=first_detail.servicio_id,
+            fecha_hora_inicio=first_detail.fecha_hora_inicio,
+            fecha_hora_fin=first_detail.fecha_hora_fin,
+        )
+    else:
+        _validar_cita(
+            db, data.empleado_id, data.fecha_hora_inicio, data.fecha_hora_fin
+        )
+    obj = models.Cita(**values)
+    if data.detalles:
+        obj.detalles = [
+            models.CitaDetalle(**detalle.model_dump()) for detalle in data.detalles
+        ]
     db.add(obj)
     commit_or_409(db)
     db.refresh(obj)
@@ -69,11 +120,24 @@ def crear(data: schemas.CitaCreate, db: Session = Depends(get_db)):
 def actualizar(id_cita: int, data: schemas.CitaUpdate, db: Session = Depends(get_db)):
     obj = get_or_404(db, models.Cita, id_cita)
     values = data.model_dump(exclude_unset=True)
+    detalles = values.pop("detalles", None)
     for k, v in values.items():
         setattr(obj, k, v)
-    _validar_cita(
-        db, obj.empleado_id, obj.fecha_hora_inicio, obj.fecha_hora_fin, id_cita
-    )
+    if detalles is not None:
+        _validar_detalles(db, data.detalles, id_cita)
+        if data.detalles:
+            first_detail = data.detalles[0]
+            obj.empleado_id = first_detail.empleado_id
+            obj.servicio_id = first_detail.servicio_id
+            obj.fecha_hora_inicio = first_detail.fecha_hora_inicio
+            obj.fecha_hora_fin = first_detail.fecha_hora_fin
+        obj.detalles = [
+            models.CitaDetalle(**detalle.model_dump()) for detalle in data.detalles
+        ]
+    else:
+        _validar_cita(
+            db, obj.empleado_id, obj.fecha_hora_inicio, obj.fecha_hora_fin, id_cita
+        )
     commit_or_409(db)
     db.refresh(obj)
     return obj
