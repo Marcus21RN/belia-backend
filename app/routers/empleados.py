@@ -1,15 +1,12 @@
 import hashlib
 import hmac
-import os
-from datetime import datetime, timedelta, timezone
-
 import bcrypt
-import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..security import TokenValidado, crear_token, revocar_token, rol_permitido, verificar_token
 from .crud import commit_or_409, flush_or_409, get_or_404
 
 router = APIRouter(prefix="/empleados", tags=["Empleados"])
@@ -36,17 +33,17 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(check.hex(), digest)
 
 
-@router.get("/", response_model=list[schemas.EmpleadoOut])
+@router.get("/", response_model=list[schemas.EmpleadoOut], dependencies=[Depends(verificar_token)])
 def listar(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.Empleado).offset(skip).limit(min(limit, 500)).all()
 
 
-@router.get("/{id_empleado}", response_model=schemas.EmpleadoOut)
+@router.get("/{id_empleado}", response_model=schemas.EmpleadoOut, dependencies=[Depends(verificar_token)])
 def obtener(id_empleado: int, db: Session = Depends(get_db)):
     return get_or_404(db, models.Empleado, id_empleado)
 
 
-@router.post("/", response_model=schemas.EmpleadoOut, status_code=201)
+@router.post("/", response_model=schemas.EmpleadoOut, status_code=201, dependencies=[Depends(verificar_token)])
 def crear(data: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
     values = data.model_dump(exclude={"horarios"})
     values["password"] = hash_password(values["password"])
@@ -60,7 +57,7 @@ def crear(data: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
     return obj
 
 
-@router.patch("/{id_empleado}", response_model=schemas.EmpleadoOut)
+@router.patch("/{id_empleado}", response_model=schemas.EmpleadoOut, dependencies=[Depends(verificar_token)])
 def actualizar(
     id_empleado: int, data: schemas.EmpleadoUpdate, db: Session = Depends(get_db)
 ):
@@ -79,7 +76,7 @@ def actualizar(
     return obj
 
 
-@router.delete("/{id_empleado}", status_code=204)
+@router.delete("/{id_empleado}", status_code=204, dependencies=[Depends(verificar_token)])
 def eliminar(id_empleado: int, db: Session = Depends(get_db)):
     db.delete(get_or_404(db, models.Empleado, id_empleado))
     commit_or_409(db)
@@ -96,16 +93,11 @@ def login(data: schemas.LoginIn, db: Session = Depends(get_db)):
         )
         .first()
     )
-    if not emp or not verify_password(data.password, emp.password):
+    if not emp or not verify_password(data.password, emp.password) or not rol_permitido(emp.rol):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
+    return {"access_token": crear_token(emp.id_empleado), "token_type": "bearer", "employee": emp}
 
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY no está configurada")
-    now = datetime.now(timezone.utc)
-    access_token = jwt.encode(
-        {"sub": str(emp.id_empleado), "iat": now, "exp": now + timedelta(hours=1)},
-        secret,
-        algorithm="HS256",
-    )
-    return {"access_token": access_token, "token_type": "bearer", "employee": emp}
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(token: TokenValidado = Depends(verificar_token)):
+    revocar_token(token)

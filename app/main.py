@@ -1,9 +1,10 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models, schemas
 from .routers import citas, empleados, paquetes, views
 from .routers.crud import crud_router
+from .security import verificar_token
 
 app = FastAPI(title="Belia API", version="1.0.0")
 
@@ -26,16 +27,19 @@ def _crud(model, prefix, tag, name):
     )
 
 
-app.include_router(_crud(models.Cliente, "/clientes", "Clientes", "Cliente"))
-app.include_router(_crud(models.Categoria, "/categorias", "Categorías", "Categoria"))
-app.include_router(_crud(models.Servicio, "/servicios", "Servicios", "Servicio"))
-app.include_router(_crud(models.Inventario, "/inventario", "Inventario", "Inventario"))
-app.include_router(_crud(models.Horario, "/horarios", "Horarios", "Horario"))
-app.include_router(_crud(models.Estado, "/estados", "Estados", "Estado"))
+for router in (
+    _crud(models.Cliente, "/clientes", "Clientes", "Cliente"),
+    _crud(models.Categoria, "/categorias", "Categorías", "Categoria"),
+    _crud(models.Servicio, "/servicios", "Servicios", "Servicio"),
+    _crud(models.Inventario, "/inventario", "Inventario", "Inventario"),
+    _crud(models.Horario, "/horarios", "Horarios", "Horario"),
+    _crud(models.Estado, "/estados", "Estados", "Estado"),
+    citas.router,
+    paquetes.router,
+    views.router,
+):
+    app.include_router(router, dependencies=[Depends(verificar_token)])
 app.include_router(empleados.router)
-app.include_router(citas.router)
-app.include_router(paquetes.router)
-app.include_router(views.router)
 
 
 @app.get("/", tags=["Health"])
