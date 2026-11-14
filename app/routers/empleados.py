@@ -1,7 +1,10 @@
 import hashlib
 import hmac
+import os
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -82,9 +85,27 @@ def eliminar(id_empleado: int, db: Session = Depends(get_db)):
     commit_or_409(db)
 
 
-@router.post("/login", response_model=schemas.EmpleadoOut)
+@router.post("/login", response_model=schemas.LoginOut)
 def login(data: schemas.LoginIn, db: Session = Depends(get_db)):
-    emp = db.query(models.Empleado).filter_by(correo=data.correo).first()
-    if not emp or not emp.activo or not verify_password(data.password, emp.password):
+    emp = (
+        db.query(models.Empleado)
+        .join(models.Estado, models.Estado.id_estado == models.Empleado.estado_id)
+        .filter(
+            models.Empleado.correo == data.correo,
+            models.Estado.nombre == "Activo",
+        )
+        .first()
+    )
+    if not emp or not verify_password(data.password, emp.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas")
-    return emp
+
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY no está configurada")
+    now = datetime.now(timezone.utc)
+    access_token = jwt.encode(
+        {"sub": str(emp.id_empleado), "iat": now, "exp": now + timedelta(hours=1)},
+        secret,
+        algorithm="HS256",
+    )
+    return {"access_token": access_token, "token_type": "bearer", "employee": emp}
