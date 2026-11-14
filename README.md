@@ -88,4 +88,3 @@ python -m uvicorn app.main:app --reload
 
 Para detener el servidor, pulsa `Ctrl+C`. El frontend local está permitido desde
 `http://localhost:3000` y `http://localhost:5173`.
-
