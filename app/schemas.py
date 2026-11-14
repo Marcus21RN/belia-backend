@@ -1,5 +1,6 @@
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -63,7 +64,7 @@ class EmpleadoBase(BaseModel):
     correo: str = Field(max_length=100)
     especialidad: str | None = Field(None, max_length=100)
     rol: str = Field(max_length=50)
-    activo: bool = True
+    estado_id: int | None = None
 
 
 class HorarioEmpleadoIn(BaseModel):
@@ -100,7 +101,7 @@ class EmpleadoUpdate(BaseModel):
     correo: str | None = Field(None, max_length=100)
     especialidad: str | None = Field(None, max_length=100)
     rol: str | None = Field(None, max_length=50)
-    activo: bool | None = None
+    estado_id: int | None = None
     password: str | None = Field(None, min_length=8, max_length=128)
     horarios: list[HorarioEmpleadoIn] | None = None
 
@@ -117,6 +118,21 @@ class EmpleadoOut(ORM, EmpleadoBase):
 class LoginIn(BaseModel):
     correo: str
     password: str
+
+
+class LoginEmployeeOut(ORM):
+    id_empleado: int
+    nombre_completo: str
+    correo: str
+    rol: str
+    especialidad: str | None = None
+    telefono: str | None = None
+
+
+class LoginOut(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    employee: LoginEmployeeOut
 
 
 # Horarios
@@ -199,9 +215,9 @@ class InventarioBase(BaseModel):
     precio: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     cantidad_existente: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     imagen_url: str | None = None
-    activo: bool = True
     categoria_id: int
     presentacion_id: int | None = None
+    estado_id: int
     unidad_id: int | None = None
 
 
@@ -214,9 +230,9 @@ class InventarioUpdate(BaseModel):
     precio: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     cantidad_existente: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
     imagen_url: str | None = None
-    activo: bool | None = None
     categoria_id: int | None = None
     presentacion_id: int | None = None
+    estado_id: int | None = None
     unidad_id: int | None = None
 
 
@@ -225,24 +241,6 @@ class InventarioOut(ORM, InventarioBase):
 
 
 # Citas
-class CitaDetalleIn(BaseModel):
-    servicio_id: int
-    empleado_id: int
-    fecha_hora_inicio: datetime
-    fecha_hora_fin: datetime
-
-    @model_validator(mode="after")
-    def _validar_fechas(self):
-        if self.fecha_hora_inicio >= self.fecha_hora_fin:
-            raise ValueError("fecha_hora_inicio debe ser menor que fecha_hora_fin")
-        return self
-
-
-class CitaDetalleOut(ORM, CitaDetalleIn):
-    id_detalle: int
-    cita_id: int
-
-
 class CitaBase(BaseModel):
     empleado_id: int
     servicio_id: int
@@ -251,7 +249,6 @@ class CitaBase(BaseModel):
     fecha_hora_fin: datetime
     estado_id: int
     notas_detalles: str | None = None
-    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
 
     @model_validator(mode="after")
     def _validar_fechas(self):
@@ -261,7 +258,7 @@ class CitaBase(BaseModel):
 
 
 class CitaCreate(CitaBase):
-    detalles: list[CitaDetalleIn] = Field(default_factory=list)
+    pass
 
 
 class CitaUpdate(BaseModel):
@@ -272,13 +269,10 @@ class CitaUpdate(BaseModel):
     fecha_hora_fin: datetime | None = None
     estado_id: int | None = None
     notas_detalles: str | None = None
-    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
-    detalles: list[CitaDetalleIn] | None = None
 
 
 class CitaOut(ORM, CitaBase):
     id_cita: int
-    detalles: list[CitaDetalleOut] = Field(default_factory=list)
 
 
 # Paquetes

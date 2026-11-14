@@ -15,20 +15,63 @@ def _rows(db: Session, statement: str, **params):
 
 @router.get("/dashboard/kpis")
 def dashboard_kpis(db: Session = Depends(get_db)):
-    rows = _rows(db, "SELECT * FROM vw_dashboard_kpis")
+    rows = _rows(
+        db,
+        """
+        SELECT
+            (SELECT COUNT(*) FROM clientes) AS total_clientes,
+            (
+                SELECT COUNT(*)
+                FROM empleado e
+                JOIN estado es ON es.id_estado = e.estado_id
+                WHERE es.nombre = 'Activo'
+            ) AS empleados_activos,
+            (
+                SELECT COUNT(*)
+                FROM servicios s
+                JOIN estado es ON es.id_estado = s.estado_id
+                WHERE es.nombre = 'Activo'
+            ) AS servicios_activos,
+            (
+                SELECT COUNT(*)
+                FROM citas c
+                JOIN estado es ON es.id_estado = c.estado_id
+                WHERE c.fecha_hora_inicio::date = CURRENT_DATE
+                  AND es.nombre != 'Cancelada'
+            ) AS citas_hoy,
+            (
+                SELECT COALESCE(SUM(s.precio), 0)
+                FROM citas c
+                JOIN servicios s ON s.id_servicio = c.servicio_id
+                JOIN estado es ON es.id_estado = c.estado_id
+                WHERE c.fecha_hora_inicio::date = CURRENT_DATE
+                  AND es.nombre != 'Cancelada'
+            ) AS ingresos_hoy
+        """,
+    )
     return rows[0] if rows else {}
 
 
 @router.get("/dashboard/inventario")
 def dashboard_inventario(db: Session = Depends(get_db)):
-    return _rows(db, "SELECT * FROM vw_dashboard_inventario")
+    return _rows(
+        db,
+        """
+        SELECT
+            i.id_producto,
+            i.nombre,
+            i.cantidad_existente,
+            i.precio,
+            c.nombre AS categoria
+        FROM inventario i
+        JOIN categorias c ON c.id_categoria = i.categoria_id
+        ORDER BY i.cantidad_existente, i.nombre
+        """,
+    )
 
 
 @router.get("/dashboard/agenda")
 def dashboard_agenda(fecha: date | None = None, db: Session = Depends(get_db)):
-    if fecha is None:
-        return _rows(db, "SELECT * FROM vw_dashboard_agenda_hoy")
-
     return _rows(
         db,
         """
@@ -45,7 +88,7 @@ def dashboard_agenda(fecha: date | None = None, db: Session = Depends(get_db)):
         JOIN clientes cl ON c.cliente_id = cl.id_cliente
         JOIN empleado e ON c.empleado_id = e.id_empleado
         JOIN estado es ON c.estado_id = es.id_estado
-        WHERE c.fecha_hora_inicio::date = :fecha
+        WHERE c.fecha_hora_inicio::date = COALESCE(CAST(:fecha AS date), CURRENT_DATE)
         ORDER BY c.fecha_hora_inicio
         """,
         fecha=fecha,
@@ -83,60 +126,34 @@ def agenda_citas(
     return _rows(
         db,
         f"""
-        WITH detalle_citas AS (
-            SELECT
-                d.cita_id,
-                json_agg(
-                    json_build_object(
-                        'serviceId', s.id_servicio,
-                        'serviceName', s.nombre,
-                        'category', cat.nombre,
-                        'price', s.precio,
-                        'durationMinutes', s.duracion_estimada,
-                        'startTime', TO_CHAR(d.fecha_hora_inicio, 'HH24:MI'),
-                        'endTime', TO_CHAR(d.fecha_hora_fin, 'HH24:MI'),
-                        'employeeId', e.id_empleado,
-                        'employeeName', e.nombre_completo
-                    )
-                    ORDER BY d.fecha_hora_inicio
-                ) AS service_breakdown
-            FROM cita_detalles d
-            JOIN servicios s ON s.id_servicio = d.servicio_id
-            JOIN categorias cat ON cat.id_categoria = s.categoria_id
-            JOIN empleado e ON e.id_empleado = d.empleado_id
-            GROUP BY d.cita_id
-        )
         SELECT
             c.id_cita,
             c.fecha_hora_inicio::date AS fecha,
             TO_CHAR(c.fecha_hora_inicio, 'HH24:MI') AS hora_inicio,
             TO_CHAR(c.fecha_hora_fin, 'HH24:MI') AS hora_fin,
-            c.notas_detalles AS specification,
+            c.notas_cita AS specification,
             c.empleado_id,
             e.nombre_completo AS estilista,
             c.servicio_id,
             s.nombre AS servicio,
             s.duracion_estimada,
-            COALESCE(c.precio_total, s.precio) AS precio,
+            s.precio AS precio,
             cat.nombre AS categoria,
             c.cliente_id,
             cl.nombre_completo AS cliente,
             cl.telefono AS telefono_cliente,
             es.nombre AS estado,
-            COALESCE(
-                detalle_citas.service_breakdown,
-                json_build_array(
-                    json_build_object(
-                        'serviceId', s.id_servicio,
-                        'serviceName', s.nombre,
-                        'category', cat.nombre,
-                        'price', s.precio,
-                        'durationMinutes', s.duracion_estimada,
-                        'startTime', TO_CHAR(c.fecha_hora_inicio, 'HH24:MI'),
-                        'endTime', TO_CHAR(c.fecha_hora_fin, 'HH24:MI'),
-                        'employeeId', e.id_empleado,
-                        'employeeName', e.nombre_completo
-                    )
+            json_build_array(
+                json_build_object(
+                    'serviceId', s.id_servicio,
+                    'serviceName', s.nombre,
+                    'category', cat.nombre,
+                    'price', s.precio,
+                    'durationMinutes', s.duracion_estimada,
+                    'startTime', TO_CHAR(c.fecha_hora_inicio, 'HH24:MI'),
+                    'endTime', TO_CHAR(c.fecha_hora_fin, 'HH24:MI'),
+                    'employeeId', e.id_empleado,
+                    'employeeName', e.nombre_completo
                 )
             ) AS service_breakdown
         FROM citas c
@@ -145,7 +162,6 @@ def agenda_citas(
         JOIN categorias cat ON cat.id_categoria = s.categoria_id
         JOIN clientes cl ON cl.id_cliente = c.cliente_id
         JOIN estado es ON es.id_estado = c.estado_id
-        LEFT JOIN detalle_citas ON detalle_citas.cita_id = c.id_cita
         WHERE {where_clause}
         ORDER BY c.fecha_hora_inicio
         """,
@@ -158,10 +174,18 @@ def catalogo_servicios(db: Session = Depends(get_db)):
     return _rows(
         db,
         """
-        SELECT v.*, s.duracion_estimada
-        FROM vw_catalogo_servicios v
-        JOIN servicios s ON s.id_servicio = v.id_servicio
-        ORDER BY v.categoria, v.servicio
+        SELECT
+            s.id_servicio,
+            cat.nombre AS categoria,
+            s.nombre AS servicio,
+            s.notas_detalles AS notas_detalles,
+            s.precio,
+            s.duracion_estimada,
+            es.id_estado AS estado
+        FROM servicios s
+        JOIN categorias cat ON cat.id_categoria = s.categoria_id
+        JOIN estado es ON es.id_estado = s.estado_id
+        ORDER BY cat.nombre, s.nombre
         """,
     )
 
@@ -172,27 +196,49 @@ def catalogo_paquetes(db: Session = Depends(get_db)):
         db,
         """
         SELECT
-            v.*,
+            p.id_paquete,
+            p.nombre AS paquete,
+            p.descripcion,
+            p.precio,
+            p.fecha_inicio,
+            p.fecha_fin,
+            es.nombre AS estado,
+            COALESCE(STRING_AGG(s.nombre, ', ' ORDER BY s.nombre), '') AS servicios_incluidos,
             COALESCE(
                 array_agg(ps.id_servicio ORDER BY ps.id_servicio)
                     FILTER (WHERE ps.id_servicio IS NOT NULL),
                 ARRAY[]::integer[]
             ) AS servicios_ids,
             COALESCE(SUM(s.duracion_estimada), 0) AS duracion_estimada
-        FROM vw_catalogo_paquetes v
-        LEFT JOIN paquete_servicios ps ON ps.id_paquete = v.id_paquete
+        FROM paquetes p
+        JOIN estado es ON es.id_estado = p.estado_id
+        LEFT JOIN paquete_servicios ps ON ps.id_paquete = p.id_paquete
         LEFT JOIN servicios s ON s.id_servicio = ps.id_servicio
-        GROUP BY
-            v.id_paquete, v.paquete, v.descripcion, v.precio,
-            v.fecha_inicio, v.fecha_fin, v.estado, v.servicios_incluidos
-        ORDER BY v.id_paquete
+        GROUP BY p.id_paquete, p.nombre, p.descripcion, p.precio,
+            p.fecha_inicio, p.fecha_fin, es.nombre
+        ORDER BY p.id_paquete
         """,
     )
 
 
 @router.get("/directorio/empleados")
 def directorio_empleados(db: Session = Depends(get_db)):
-    return _rows(db, "SELECT * FROM vw_directorio_empleados")
+    return _rows(
+        db,
+        """
+        SELECT
+            e.id_empleado,
+            e.nombre_completo,
+            e.telefono,
+            e.correo,
+            e.especialidad,
+            e.rol,
+            es.nombre AS estado
+        FROM empleado e
+        LEFT JOIN estado es ON es.id_estado = e.estado_id
+        ORDER BY e.nombre_completo
+        """,
+    )
 
 
 @router.get("/inventario/tabla")
@@ -201,19 +247,22 @@ def tabla_inventario(db: Session = Depends(get_db)):
         db,
         """
         SELECT
-            v.*,
+            i.id_producto,
+            i.nombre,
+            i.cantidad_existente,
+            i.imagen_url,
             i.precio,
-            i.activo,
             i.categoria_id,
             i.presentacion_id,
             i.unidad_id,
+            c.nombre AS categoria,
             p.nombre AS presentacion,
             um.nombre AS unidad
-        FROM vw_tabla_inventario v
-        JOIN inventario i ON i.id_producto = v.id_producto
+        FROM inventario i
+        JOIN categorias c ON c.id_categoria = i.categoria_id
         LEFT JOIN presentacion p ON p.id_presentacion = i.presentacion_id
         LEFT JOIN unidad_medida um ON um.id_unidad = i.unidad_id
-        ORDER BY i.cantidad_existente
+        ORDER BY i.cantidad_existente, i.nombre
         """,
     )
 

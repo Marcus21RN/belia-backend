@@ -7,7 +7,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 load_dotenv()
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/belia"
+    "DATABASE_URL", "postgresql+psycopg2://postgres:root@localhost:5432/gloss_db"
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
