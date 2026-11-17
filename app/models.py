@@ -128,7 +128,7 @@ class Cita(Base):
     fecha_hora_inicio: Mapped[datetime]
     fecha_hora_fin: Mapped[datetime]
     estado_id: Mapped[int] = mapped_column(ForeignKey("estado.id_estado"))
-    notas_detalles: Mapped[str | None] = mapped_column("notas_cita", Text)
+    notas_cita: Mapped[str | None] = mapped_column("notas_cita", Text)
 
 
 class Paquete(Base):

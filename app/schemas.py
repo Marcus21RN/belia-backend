@@ -248,7 +248,7 @@ class CitaBase(BaseModel):
     fecha_hora_inicio: datetime
     fecha_hora_fin: datetime
     estado_id: int
-    notas_detalles: str | None = None
+    notas_cita: str | None = None
 
     @model_validator(mode="after")
     def _validar_fechas(self):
@@ -268,7 +268,7 @@ class CitaUpdate(BaseModel):
     fecha_hora_inicio: datetime | None = None
     fecha_hora_fin: datetime | None = None
     estado_id: int | None = None
-    notas_detalles: str | None = None
+    notas_cita: str | None = None
 
 
 class CitaOut(ORM, CitaBase):

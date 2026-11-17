@@ -131,7 +131,7 @@ def agenda_citas(
             c.fecha_hora_inicio::date AS fecha,
             TO_CHAR(c.fecha_hora_inicio, 'HH24:MI') AS hora_inicio,
             TO_CHAR(c.fecha_hora_fin, 'HH24:MI') AS hora_fin,
-            c.notas_cita AS specification,
+            c.notas_cita AS especificaciones,
             c.empleado_id,
             e.nombre_completo AS estilista,
             c.servicio_id,
