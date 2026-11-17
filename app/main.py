@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models, schemas
-from .routers import citas, empleados, paquetes, views
+from .routers import citas, empleados, inventario, paquetes, views
 from .routers.crud import crud_router
 from .security import verificar_token
 
@@ -39,6 +39,7 @@ for router in (
     _crud(models.Inventario, "/inventario", "Inventario", "Inventario"),
     _crud(models.Horario, "/horarios", "Horarios", "Horario"),
     _crud(models.Estado, "/estados", "Estados", "Estado"),
+    inventario.router,
     citas.router,
     paquetes.router,
     views.router,
