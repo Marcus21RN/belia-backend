@@ -57,24 +57,7 @@ DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base
 JWT_SECRET_KEY=<clave-aleatoria-secreta>
 ```
 
-## 3. Crear el primer empleado
-
-Con PostgreSQL en marcha y las tablas ejecutadas, ejecuta:
-
-```bash
-python crear_empleado.py
-```
-
-El script solicita nombre, correo, rol (`Administrador` o `Empleado`) y
-contraseña. La contraseña no se muestra mientras la escribes; se guarda como
-hash bcrypt, no en texto plano. Debe tener al menos 8 caracteres y no superar
-72 bytes UTF-8. El correo debe ser único.
-
-Debe existir exactamente un registro llamado `Activo` en la tabla `estado`.
-Puedes ejecutar el script de nuevo para crear otro usuario con un correo
-distinto. 
-
-## 4. Iniciar y comprobar el backend
+## 3. Iniciar y comprobar el backend
 
 Con el entorno virtual activado, ejecuta:
 
