@@ -113,7 +113,14 @@ def agenda_citas(
         filters.append("c.fecha_hora_inicio::date <= :hasta")
         params["hasta"] = hasta
     if empleado_id is not None:
-        filters.append("c.empleado_id = :empleado_id")
+        filters.append("""(
+            EXISTS (
+                SELECT 1 FROM cita_detalles d
+                WHERE d.cita_id = c.id_cita AND d.empleado_id = :empleado_id
+            )
+            OR (NOT EXISTS (SELECT 1 FROM cita_detalles d WHERE d.cita_id = c.id_cita)
+                AND c.empleado_id = :empleado_id)
+        )""")
         params["empleado_id"] = empleado_id
     if cliente_id is not None:
         filters.append("c.cliente_id = :cliente_id")
@@ -137,25 +144,52 @@ def agenda_citas(
             c.servicio_id,
             s.nombre AS servicio,
             s.duracion_estimada,
-            s.precio AS precio,
+            COALESCE(c.precio_total, s.precio) AS precio,
+            c.precio_total,
             cat.nombre AS categoria,
             c.cliente_id,
             cl.nombre_completo AS cliente,
             cl.telefono AS telefono_cliente,
             es.nombre AS estado,
-            json_build_array(
+            COALESCE((
+                SELECT json_agg(
+                    json_build_object(
+                        'serviceId', ds.id_servicio,
+                        'serviceName', ds.nombre,
+                        'category', dc.nombre,
+                        'price', CASE WHEN sel.paquete_id IS NULL
+                            THEN COALESCE(sel.precio_acordado, ds.precio) ELSE NULL END,
+                        'durationMinutes', EXTRACT(EPOCH FROM (d.fecha_hora_fin - d.fecha_hora_inicio)) / 60,
+                        'startTime', TO_CHAR(d.fecha_hora_inicio, 'HH24:MI'),
+                        'endTime', TO_CHAR(d.fecha_hora_fin, 'HH24:MI'),
+                        'employeeId', de.id_empleado,
+                        'employeeName', de.nombre_completo,
+                        'selectionId', sel.id_seleccion,
+                        'packageId', sel.paquete_id,
+                        'selectionName', COALESCE(p.nombre, ds.nombre),
+                        'selectionPrice', sel.precio_acordado
+                    ) ORDER BY d.orden
+                )
+                FROM cita_detalles d
+                JOIN cita_selecciones sel ON sel.id_seleccion = d.seleccion_id
+                LEFT JOIN paquetes p ON p.id_paquete = sel.paquete_id
+                JOIN servicios ds ON ds.id_servicio = d.servicio_id
+                JOIN categorias dc ON dc.id_categoria = ds.categoria_id
+                JOIN empleado de ON de.id_empleado = d.empleado_id
+                WHERE d.cita_id = c.id_cita
+            ), json_build_array(
                 json_build_object(
                     'serviceId', s.id_servicio,
                     'serviceName', s.nombre,
                     'category', cat.nombre,
                     'price', s.precio,
-                    'durationMinutes', s.duracion_estimada,
+                    'durationMinutes', EXTRACT(EPOCH FROM (c.fecha_hora_fin - c.fecha_hora_inicio)) / 60,
                     'startTime', TO_CHAR(c.fecha_hora_inicio, 'HH24:MI'),
                     'endTime', TO_CHAR(c.fecha_hora_fin, 'HH24:MI'),
                     'employeeId', e.id_empleado,
                     'employeeName', e.nombre_completo
                 )
-            ) AS service_breakdown
+            )) AS service_breakdown
         FROM citas c
         JOIN empleado e ON e.id_empleado = c.empleado_id
         JOIN servicios s ON s.id_servicio = c.servicio_id

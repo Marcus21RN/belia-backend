@@ -1,73 +1,55 @@
-# Belia API
+# Belia Backend
 
-## Requisitos
+Belia Backend es la API que da soporte a la plataforma de gestión de Belia, un
+salón de belleza. Centraliza las operaciones y los datos necesarios para
+coordinar citas, clientes, equipo, servicios, paquetes e inventario, y expone
+información para las vistas de agenda y panel de control.
 
-- Python 3.14.2, la versión utilizada en el entorno actual.
-- Git y acceso al repositorio.
-- PostgreSQL 16 con la base y los datos de desarrollo de Belia. Puede estar en
-  Docker o en un servidor accesible. Para usar Docker localmente, instala y
-  ejecuta Docker Desktop.
-- Un respaldo de desarrollo compatible, si todavía no tienes la base de datos.
-  El repositorio no contiene el esquema completo ni crea las tablas al arrancar.
+## Propósito
 
-Los comandos de esta guía se ejecutan desde la raíz del proyecto. No compartas
-contraseñas, archivos `.env`, respaldos ni archivos de credenciales mediante Git.
+Este repositorio contiene la capa de backend que conecta las aplicaciones de
+Belia con su base de datos. Proporciona endpoints para consultar y mantener la
+información del negocio, aplica reglas operativas y entrega respuestas
+estructuradas para las interfaces que consumen la API.
 
-## 1. Crear el entorno virtual
+## Funcionalidades principales
 
-En macOS o Linux, comprueba que `python3` sea Python 3.14.2 y crea el entorno:
+- **Citas y agenda:** gestión de citas individuales y de varios servicios,
+  incluidos los servicios incluidos en paquetes. Valida horarios de trabajo,
+  especialidades del equipo y conflictos de agenda.
+- **Clientes y equipo:** consulta y mantenimiento de clientes, empleados,
+  roles, estados y horarios de trabajo.
+- **Servicios y paquetes:** administración de servicios, categorías, precios,
+  duración estimada y paquetes compuestos por varios servicios.
+- **Inventario:** gestión de productos, existencias, unidades y presentaciones,
+  con soporte para imágenes de productos.
+- **Panel y catálogos:** proporciona datos de agenda, indicadores operativos,
+  directorios y catálogos para las vistas de la plataforma.
+- **Acceso autenticado:** incluye inicio y cierre de sesión para empleados y
+  protege las operaciones de gestión mediante tokens de acceso.
 
-```bash
-python3 --version
-python3 -m venv .venv
-source .venv/bin/activate
-```
+## Tecnologías
 
-Si `python3` corresponde a otra versión, usa la ruta al ejecutable de Python
-3.14.2 instalado en tu equipo para crear el entorno.
+- **Python** y **FastAPI** para la API HTTP.
+- **SQLAlchemy** para el acceso y la persistencia de datos.
+- **PostgreSQL** como base de datos.
+- **Pydantic** para validar y estructurar los datos de entrada y salida.
+- **JWT** para la autenticación de empleados.
+- **Cloudinary** para el almacenamiento de imágenes del inventario.
 
-En Windows con PowerShell:
+## Organización del código
 
-```powershell
-py -3.14 --version
-py -3.14 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
+- `app/main.py`: crea la aplicación y registra los routers.
+- `app/models.py` y `app/schemas.py`: definen los modelos de datos y los
+  esquemas de la API.
+- `app/database.py`: configura la conexión a la base de datos y las sesiones.
+- `app/security.py`: gestiona la validación y revocación de tokens.
+- `app/routers/`: agrupa las rutas de citas, empleados, inventario, paquetes,
+  operaciones CRUD y vistas de agenda, catálogos y panel.
 
-Comprueba que el entorno activado utiliza la versión esperada e instala las
-dependencias:
+## Alcance
 
-```bash
-python --version
-python -m pip install -r requirements.txt
-python -m pip check
-```
-
-Si PowerShell impide activar el entorno, puedes sustituir `python` en los
-comandos siguientes por `.\.venv\Scripts\python.exe`, sin activarlo.
-
-
-## 2. Configurar las variables de entorno
-
-Crea un archivo `.env` en la raíz del proyecto con este formato y sustituye los
-valores entre `<...>`:
-
-```dotenv
-DATABASE_URL=postgresql+psycopg2://<usuario>:<contraseña>@<host>:<puerto>/<base>
-JWT_SECRET_KEY=<clave-aleatoria-secreta>
-```
-
-## 3. Iniciar y comprobar el backend
-
-Con el entorno virtual activado, ejecuta:
-
-```bash
-python -m uvicorn app.main:app --reload
-```
-
-- Abre [http://127.0.0.1:8000/](http://127.0.0.1:8000/) para comprobar que la
-  aplicación responde. Esta ruta no comprueba la conexión a PostgreSQL.
-- Abre [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
-
-Para detener el servidor, pulsa `Ctrl+C`. El frontend local está permitido desde
-`http://localhost:3000` y `http://localhost:5173`.
+Belia Backend se enfoca en la lógica de servidor y en la exposición de datos
+para los clientes de la plataforma. La interfaz de usuario y la infraestructura
+de base de datos son componentes separados; la API se integra con PostgreSQL y
+con el servicio de imágenes cuando esa funcionalidad se utiliza.

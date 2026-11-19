@@ -241,6 +241,54 @@ class InventarioOut(ORM, InventarioBase):
 
 
 # Citas
+class CitaDetalleIn(BaseModel):
+    servicio_id: int
+    empleado_id: int
+    fecha_hora_inicio: datetime
+    fecha_hora_fin: datetime
+
+    @model_validator(mode="after")
+    def _validar_fechas(self):
+        if self.fecha_hora_inicio.tzinfo or self.fecha_hora_fin.tzinfo:
+            raise ValueError("Los horarios deben ser locales y no incluir zona horaria")
+        if self.fecha_hora_inicio >= self.fecha_hora_fin:
+            raise ValueError("fecha_hora_inicio debe ser menor que fecha_hora_fin")
+        return self
+
+
+class CitaSeleccionIn(BaseModel):
+    servicio_id: int | None = None
+    paquete_id: int | None = None
+    precio_acordado: Decimal | None = Field(ge=0, max_digits=10, decimal_places=2)
+    detalles: list[CitaDetalleIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validar_seleccion(self):
+        if (self.servicio_id is None) == (self.paquete_id is None):
+            raise ValueError("Indica un servicio o un paquete, no ambos")
+        if self.servicio_id is not None and (
+            len(self.detalles) != 1
+            or self.detalles[0].servicio_id != self.servicio_id
+        ):
+            raise ValueError("La selección de servicio debe contener su único tramo")
+        return self
+
+
+class CitaDetalleOut(ORM, CitaDetalleIn):
+    id_detalle: int
+    seleccion_id: int
+    orden: int
+
+
+class CitaSeleccionOut(ORM):
+    id_seleccion: int
+    orden: int
+    servicio_id: int | None
+    paquete_id: int | None
+    precio_acordado: Decimal | None
+    detalles: list[CitaDetalleOut]
+
+
 class CitaBase(BaseModel):
     empleado_id: int
     servicio_id: int
@@ -258,7 +306,15 @@ class CitaBase(BaseModel):
 
 
 class CitaCreate(CitaBase):
-    pass
+    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
+    selecciones: list[CitaSeleccionIn] | None = Field(None, min_length=1)
+    detalles: list[CitaDetalleIn] | None = Field(None, min_length=1)
+
+    @model_validator(mode="after")
+    def _validar_formato(self):
+        if self.selecciones is not None and self.detalles is not None:
+            raise ValueError("Usa selecciones o detalles, no ambos")
+        return self
 
 
 class CitaUpdate(BaseModel):
@@ -269,10 +325,25 @@ class CitaUpdate(BaseModel):
     fecha_hora_fin: datetime | None = None
     estado_id: int | None = None
     notas_cita: str | None = None
+    precio_total: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
+    selecciones: list[CitaSeleccionIn] | None = Field(None, min_length=1)
+    detalles: list[CitaDetalleIn] | None = Field(None, min_length=1)
+
+    @model_validator(mode="after")
+    def _validar_formato(self):
+        if self.selecciones is not None and self.detalles is not None:
+            raise ValueError("Usa selecciones o detalles, no ambos")
+        for field in ("empleado_id", "servicio_id", "cliente_id", "fecha_hora_inicio", "fecha_hora_fin", "estado_id", "selecciones", "detalles"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} no puede ser nulo")
+        return self
 
 
 class CitaOut(ORM, CitaBase):
     id_cita: int
+    precio_total: Decimal | None
+    selecciones: list[CitaSeleccionOut]
+    detalles: list[CitaDetalleOut]
 
 
 # Paquetes

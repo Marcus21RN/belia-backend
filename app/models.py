@@ -4,10 +4,12 @@ from decimal import Decimal
 from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Numeric,
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -129,6 +131,13 @@ class Cita(Base):
     fecha_hora_fin: Mapped[datetime]
     estado_id: Mapped[int] = mapped_column(ForeignKey("estado.id_estado"))
     notas_cita: Mapped[str | None] = mapped_column("notas_cita", Text)
+    precio_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    selecciones: Mapped[list["CitaSeleccion"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, order_by="CitaSeleccion.orden"
+    )
+    detalles: Mapped[list["CitaDetalle"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, order_by="CitaDetalle.orden"
+    )
 
 
 class Paquete(Base):
@@ -157,3 +166,49 @@ class PaqueteServicio(Base):
         ForeignKey("paquetes.id_paquete", ondelete="CASCADE"), primary_key=True
     )
     notas: Mapped[str | None] = mapped_column(Text)
+
+
+class CitaSeleccion(Base):
+    __tablename__ = "cita_selecciones"
+    __table_args__ = (
+        CheckConstraint("(servicio_id IS NOT NULL) <> (paquete_id IS NOT NULL)"),
+        CheckConstraint("orden > 0"),
+        CheckConstraint("precio_acordado >= 0"),
+        UniqueConstraint("cita_id", "orden"),
+        UniqueConstraint("id_seleccion", "cita_id"),
+    )
+
+    id_seleccion: Mapped[int] = mapped_column(primary_key=True)
+    cita_id: Mapped[int] = mapped_column(ForeignKey("citas.id_cita", ondelete="CASCADE"))
+    orden: Mapped[int]
+    servicio_id: Mapped[int | None] = mapped_column(ForeignKey("servicios.id_servicio"))
+    paquete_id: Mapped[int | None] = mapped_column(ForeignKey("paquetes.id_paquete"))
+    precio_acordado: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    detalles: Mapped[list["CitaDetalle"]] = relationship(
+        foreign_keys="CitaDetalle.seleccion_id",
+        order_by="CitaDetalle.orden",
+        viewonly=True,
+    )
+
+
+class CitaDetalle(Base):
+    __tablename__ = "cita_detalles"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["seleccion_id", "cita_id"],
+            ["cita_selecciones.id_seleccion", "cita_selecciones.cita_id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("orden > 0"),
+        CheckConstraint("fecha_hora_inicio < fecha_hora_fin"),
+        UniqueConstraint("cita_id", "orden"),
+    )
+
+    id_detalle: Mapped[int] = mapped_column(primary_key=True)
+    cita_id: Mapped[int] = mapped_column(ForeignKey("citas.id_cita", ondelete="CASCADE"))
+    seleccion_id: Mapped[int]
+    orden: Mapped[int]
+    servicio_id: Mapped[int] = mapped_column(ForeignKey("servicios.id_servicio"))
+    empleado_id: Mapped[int] = mapped_column(ForeignKey("empleado.id_empleado"))
+    fecha_hora_inicio: Mapped[datetime]
+    fecha_hora_fin: Mapped[datetime]
